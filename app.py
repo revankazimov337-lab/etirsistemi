@@ -9,7 +9,9 @@ if 'anbar' not in st.session_state:
     st.session_state.anbar = pd.DataFrame(columns=["Ətrin Adı", "Həcm (ml)", "Alış (AZN)", "Satış (AZN)", "Stok"])
 
 if 'tarixce' not in st.session_state:
-    st.session_state.tarixce = pd.DataFrame(columns=["Tarix və Saat", "Əməliyyat Növü", "Ətrin Adı", "Həcm (ml)", "Miqdar", "Məbləğ (AZN)", "Qazanc (AZN)"])
+    st.session_state.tarixce = pd.DataFrame(columns=["Tarix və Saat", "Əməliyyat Növü", "Ətrin Adı", "Həcm (ml)", "Miqdar", "Məbləğ (AZN)", "Qazanc (AZN)", "Kassa"])
+elif "Kassa" not in st.session_state.tarixce.columns:
+    st.session_state.tarixce["Kassa"] = "Açıq" # Köhnə bazanı yeniləmək üçün
 
 if 'tesdiq_gozleyir' not in st.session_state:
     st.session_state.tesdiq_gozleyir = False
@@ -76,7 +78,8 @@ if secim == "🛒 Satış Et":
                         "Həcm (ml)": satilan_hecm,
                         "Miqdar": f"-{satilan_miqdar}",
                         "Məbləğ (AZN)": ümumi_gəlir,
-                        "Qazanc (AZN)": xalis_qazanc
+                        "Qazanc (AZN)": xalis_qazanc,
+                        "Kassa": "Açıq"
                     }])
                     st.session_state.tarixce = pd.concat([st.session_state.tarixce, yeni_satish], ignore_index=True)
                     
@@ -86,53 +89,56 @@ if secim == "🛒 Satış Et":
     else:
         st.warning("Anbarda satıla biləcək məhsul yoxdur.")
 
-# --- 2. GÜN SONU HESABATI ---
+# --- 2. GÜN SONU HESABATI (Sıfırlanan Kassa) ---
 elif secim == "📊 Gün Sonu Çıxar":
-    st.subheader(f"📊 Gündəlik Kassa Hesabatı ({bugun()})")
+    st.subheader(f"📊 Açıq Kassa Hesabatı")
     
-    if not st.session_state.tarixce.empty:
-        bugunku_tarixce = st.session_state.tarixce[st.session_state.tarixce["Tarix və Saat"].str.startswith(bugun())]
+    # Yalnız hələ bağlanmamış (Açıq) əməliyyatları göstəririk
+    aciq_emeliyyatlar = st.session_state.tarixce[st.session_state.tarixce["Kassa"] == "Açıq"]
+    
+    if not aciq_emeliyyatlar.empty:
+        satilan_mallar = aciq_emeliyyatlar[aciq_emeliyyatlar["Əməliyyat Növü"] == "🔴 MƏXARİC (Satıldı)"]
         
-        if not bugunku_tarixce.empty:
-            satilan_mallar = bugunku_tarixce[bugunku_tarixce["Əməliyyat Növü"] == "🔴 MƏXARİC (Satıldı)"]
+        umumi_kassa = satilan_mallar["Məbləğ (AZN)"].sum() if not satilan_mallar.empty else 0
+        xalis_qazanc = satilan_mallar["Qazanc (AZN)"].sum() if not satilan_mallar.empty else 0
+        satilan_eded = len(satilan_mallar)
+        
+        st.info(f"💵 **KASSADAKI ÜMUMİ MƏBLƏĞ:** {umumi_kassa} AZN")
+        st.write(f"Son bağlanışdan bəri cəmi **{satilan_eded}** satış əməliyyatı olub.")
+        
+        if st.session_state.is_admin:
+            st.success(f"💰 **XALİS QAZANC:** {xalis_qazanc} AZN")
             
-            umumi_kassa = satilan_mallar["Məbləğ (AZN)"].sum()
-            xalis_qazanc = satilan_mallar["Qazanc (AZN)"].sum()
-            satilan_eded = len(satilan_mallar)
-            
-            st.info(f"💵 **GÜNÜN ÜMUMİ KASSASI:** {umumi_kassa} AZN")
-            st.write(f"Bu gün cəmi **{satilan_eded}** satış əməliyyatı olub.")
-            
-            if st.session_state.is_admin:
-                st.success(f"💰 **GÜNÜN TƏMİZ QAZANCI:** {xalis_qazanc} AZN")
-                
-                alinan_mallar = bugunku_tarixce[bugunku_tarixce["Əməliyyat Növü"] == "🟢 MƏDAXİL (Anbara gəldi)"]
-                xerc = alinan_mallar["Məbləğ (AZN)"].sum()
-                if xerc > 0:
-                    st.error(f"📉 **Bu gün mal almaq üçün xərclənən pul:** {xerc} AZN")
-            
-            st.markdown("**Bu gün satılan malların siyahısı:**")
+            alinan_mallar = aciq_emeliyyatlar[aciq_emeliyyatlar["Əməliyyat Növü"] == "🟢 MƏDAXİL (Anbara gəldi)"]
+            xerc = alinan_mallar["Məbləğ (AZN)"].sum() if not alinan_mallar.empty else 0
+            if xerc > 0:
+                st.error(f"📉 **Anbara mal almaq üçün xərclənən pul:** {xerc} AZN")
+        
+        if not satilan_mallar.empty:
+            st.markdown("**Satılan malların siyahısı:**")
             gosterilen_cedvel = satilan_mallar[["Tarix və Saat", "Ətrin Adı", "Miqdar", "Məbləğ (AZN)"]]
             st.dataframe(gosterilen_cedvel, use_container_width=True)
+        
+        st.markdown("---")
+        if st.button("✅ Kassanı Bağla və Sıfırla"):
+            yeni_hesabat = pd.DataFrame([{
+                "Tarix və Saat": baki_vaxti(),
+                "Əməliyyat Növü": "🟡 GÜN SONU HESABATI",
+                "Ətrin Adı": f"Cəmi {satilan_eded} əməliyyat bağlandı",
+                "Həcm (ml)": "-",
+                "Miqdar": "-",
+                "Məbləğ (AZN)": umumi_kassa,
+                "Qazanc (AZN)": xalis_qazanc,
+                "Kassa": "Bağlı"
+            }])
+            # Açıq olanları Bağlı edirik ki, ekrandan itsin
+            st.session_state.tarixce.loc[st.session_state.tarixce["Kassa"] == "Açıq", "Kassa"] = "Bağlı"
+            st.session_state.tarixce = pd.concat([st.session_state.tarixce, yeni_hesabat], ignore_index=True)
             
-            st.markdown("---")
-            if st.button("✅ Günü Bağla və Tarixçəyə Yaz"):
-                yeni_hesabat = pd.DataFrame([{
-                    "Tarix və Saat": baki_vaxti(),
-                    "Əməliyyat Növü": "🟡 GÜN SONU HESABATI",
-                    "Ətrin Adı": f"Cəmi {satilan_eded} əməliyyat",
-                    "Həcm (ml)": "-",
-                    "Miqdar": "-",
-                    "Məbləğ (AZN)": umumi_kassa,
-                    "Qazanc (AZN)": xalis_qazanc
-                }])
-                st.session_state.tarixce = pd.concat([st.session_state.tarixce, yeni_hesabat], ignore_index=True)
-                st.success("✅ Gün sonu hesabatı uğurla tarixçəyə yazıldı! Tarixçə bölməsindən baxa bilərsiniz.")
+            st.rerun() # Səhifəni avtomatik yeniləyirik ki ekran təmizlənsin
             
-        else:
-            st.warning("Bu gün heç bir əməliyyat qeydə alınmayıb.")
     else:
-        st.warning("Bazada heç bir əməliyyat yoxdur.")
+        st.success("✅ Kassa təmizdir! Bütün əməliyyatlar bağlanıb və ya hələ yeni satış edilməyib.")
 
 # --- 3. ANBAR ---
 elif secim == "📦 Anbar və Qazanc":
@@ -175,7 +181,7 @@ elif secim == "➕ Yeni Ətir / Stok Əlavə Et":
         col1, col2 = st.columns(2)
         with col1:
             if st.button("✅ Bəli, Təsdiqlə"):
-                yeni_tarixce = pd.DataFrame([{"Tarix və Saat": baki_vaxti(), "Əməliyyat Növü": "🟢 MƏDAXİL (Anbara gəldi)", "Ətrin Adı": m['ad'], "Həcm (ml)": m['hecm'], "Miqdar": f"+{m['stok']}", "Məbləğ (AZN)": m['stok'] * m['alish'], "Qazanc (AZN)": 0}])
+                yeni_tarixce = pd.DataFrame([{"Tarix və Saat": baki_vaxti(), "Əməliyyat Növü": "🟢 MƏDAXİL (Anbara gəldi)", "Ətrin Adı": m['ad'], "Həcm (ml)": m['hecm'], "Miqdar": f"+{m['stok']}", "Məbləğ (AZN)": m['stok'] * m['alish'], "Qazanc (AZN)": 0, "Kassa": "Açıq"}])
                 if not st.session_state.anbar.empty:
                     match = (st.session_state.anbar['Ətrin Adı'].str.lower() == m['ad'].lower()) & (st.session_state.anbar['Həcm (ml)'] == m['hecm'])
                     if match.any():
@@ -201,6 +207,8 @@ elif secim == "📜 Əməliyyat Tarixçəsi":
     if not st.session_state.tarixce.empty:
         df_tarixce = st.session_state.tarixce.copy()
         df_tarixce = df_tarixce.iloc[::-1].reset_index(drop=True)
-        st.dataframe(df_tarixce, use_container_width=True)
+        # Ekrandaki "Kassa" sütununu gizlədirik ki, cədvəl qarışıq görünməsin
+        st.dataframe(df_tarixce.drop(columns=["Kassa"]), use_container_width=True)
     else:
         st.info("Hələ ki, heç bir əməliyyat edilməyib.")
+        
