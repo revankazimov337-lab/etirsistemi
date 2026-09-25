@@ -25,32 +25,29 @@ def bugun():
 
 st.title("🛍️ Ətir Dükanı - İdarəetmə Paneli")
 
-# -- ADMİN GİRİŞİ (SOL MENYU) --
+# -- ADMİN GİRİŞİ --
 st.sidebar.markdown("---")
 if not st.session_state.is_admin:
     st.sidebar.markdown("### 🔒 Admin Paneli")
     parol = st.sidebar.text_input("Parolu daxil edin", type="password")
     if st.sidebar.button("Giriş Et"):
-        if parol == "admin123":  # PAROLU BURADAN DƏYİŞƏ BİLƏRSİNİZ
+        if parol == "admin123":
             st.session_state.is_admin = True
             st.rerun()
         else:
             st.sidebar.error("Parol yanlışdır!")
-    # İşçi üçün görünən menyu
     menyu = ["🛒 Satış Et", "📊 Gün Sonu Çıxar"]
 else:
     st.sidebar.success("🔓 Admin Rejimi Açıqdır")
     if st.sidebar.button("Çıxış Et (İşçi rejiminə qayıt)"):
         st.session_state.is_admin = False
         st.rerun()
-    # Admin üçün görünən tam menyu
     menyu = ["🛒 Satış Et", "📊 Gün Sonu Çıxar", "📦 Anbar və Qazanc", "➕ Yeni Ətir / Stok Əlavə Et", "📜 Əməliyyat Tarixçəsi"]
 
 secim = st.sidebar.radio("Bölməni seçin:", menyu)
 st.markdown("---")
 
-
-# --- 1. SATIŞ BÖLMƏSİ (Hər kəsə açıq) ---
+# --- 1. SATIŞ BÖLMƏSİ ---
 if secim == "🛒 Satış Et":
     st.subheader("🛒 Məhsul Satışı")
     if not st.session_state.anbar.empty and st.session_state.anbar['Stok'].sum() > 0:
@@ -89,26 +86,24 @@ if secim == "🛒 Satış Et":
     else:
         st.warning("Anbarda satıla biləcək məhsul yoxdur.")
 
-# --- 2. GÜN SONU HESABATI (Hər kəsə açıq, amma fərqli detallarla) ---
+# --- 2. GÜN SONU HESABATI ---
 elif secim == "📊 Gün Sonu Çıxar":
     st.subheader(f"📊 Gündəlik Kassa Hesabatı ({bugun()})")
     
     if not st.session_state.tarixce.empty:
-        # Yalnız bugünkü əməliyyatları süzürük
         bugunku_tarixce = st.session_state.tarixce[st.session_state.tarixce["Tarix və Saat"].str.startswith(bugun())]
         
         if not bugunku_tarixce.empty:
             satilan_mallar = bugunku_tarixce[bugunku_tarixce["Əməliyyat Növü"] == "🔴 MƏXARİC (Satıldı)"]
             
             umumi_kassa = satilan_mallar["Məbləğ (AZN)"].sum()
-            satilan_eded = len(satilan_mallar) # Neçə çek
+            xalis_qazanc = satilan_mallar["Qazanc (AZN)"].sum()
+            satilan_eded = len(satilan_mallar)
             
             st.info(f"💵 **GÜNÜN ÜMUMİ KASSASI:** {umumi_kassa} AZN")
             st.write(f"Bu gün cəmi **{satilan_eded}** satış əməliyyatı olub.")
             
-            # ƏGƏR ADMİNDİRSƏ, XALİS QAZANCI DA GÖRƏCƏK
             if st.session_state.is_admin:
-                xalis_qazanc = satilan_mallar["Qazanc (AZN)"].sum()
                 st.success(f"💰 **GÜNÜN TƏMİZ QAZANCI:** {xalis_qazanc} AZN")
                 
                 alinan_mallar = bugunku_tarixce[bugunku_tarixce["Əməliyyat Növü"] == "🟢 MƏDAXİL (Anbara gəldi)"]
@@ -120,12 +115,26 @@ elif secim == "📊 Gün Sonu Çıxar":
             gosterilen_cedvel = satilan_mallar[["Tarix və Saat", "Ətrin Adı", "Miqdar", "Məbləğ (AZN)"]]
             st.dataframe(gosterilen_cedvel, use_container_width=True)
             
+            st.markdown("---")
+            if st.button("✅ Günü Bağla və Tarixçəyə Yaz"):
+                yeni_hesabat = pd.DataFrame([{
+                    "Tarix və Saat": baki_vaxti(),
+                    "Əməliyyat Növü": "🟡 GÜN SONU HESABATI",
+                    "Ətrin Adı": f"Cəmi {satilan_eded} əməliyyat",
+                    "Həcm (ml)": "-",
+                    "Miqdar": "-",
+                    "Məbləğ (AZN)": umumi_kassa,
+                    "Qazanc (AZN)": xalis_qazanc
+                }])
+                st.session_state.tarixce = pd.concat([st.session_state.tarixce, yeni_hesabat], ignore_index=True)
+                st.success("✅ Gün sonu hesabatı uğurla tarixçəyə yazıldı! Tarixçə bölməsindən baxa bilərsiniz.")
+            
         else:
             st.warning("Bu gün heç bir əməliyyat qeydə alınmayıb.")
     else:
         st.warning("Bazada heç bir əməliyyat yoxdur.")
 
-# --- 3. ANBAR (Yalnız Admin) ---
+# --- 3. ANBAR ---
 elif secim == "📦 Anbar və Qazanc":
     st.subheader("📦 Mövcud Anbar və Gəlir Hesabatı")
     if not st.session_state.anbar.empty:
@@ -137,7 +146,7 @@ elif secim == "📦 Anbar və Qazanc":
     else:
         st.info("Anbar hələ boşdur.")
 
-# --- 4. STOKA ƏLAVƏ (Yalnız Admin) ---
+# --- 4. STOKA ƏLAVƏ ---
 elif secim == "➕ Yeni Ətir / Stok Əlavə Et":
     st.subheader("➕ Yeni Məhsul və ya Mövcud Stoka Əlavə")
     ad = st.text_input("Ətrin Adı / Növü (Məs: Lacoste)")
@@ -147,10 +156,8 @@ elif secim == "➕ Yeni Ətir / Stok Əlavə Et":
     stok = st.number_input("Əlavə olunan Miqdar", min_value=1, step=1, value=None)
     
     if st.button("Yoxla və Təsdiqə Keç"):
-        if not ad:
-            st.error("Ətrin adını yazın!")
-        elif alish is None or satish is None or stok is None:
-            st.error("Qiymətləri və miqdarı tam daxil edin!")
+        if not ad: st.error("Ətrin adını yazın!")
+        elif alish is None or satish is None or stok is None: st.error("Qiymətləri və miqdarı tam daxil edin!")
         else:
             st.session_state.tesdiq_gozleyir = True
             st.session_state.yeni_etir_melumatlari = {"ad": ad, "hecm": hecm, "alish": alish, "satish": satish, "stok": stok}
@@ -188,9 +195,9 @@ elif secim == "➕ Yeni Ətir / Stok Əlavə Et":
                 st.session_state.tesdiq_gozleyir = False
                 st.rerun()
 
-# --- 5. TARİXÇƏ (Yalnız Admin) ---
+# --- 5. TARİXÇƏ ---
 elif secim == "📜 Əməliyyat Tarixçəsi":
-    st.subheader("📜 Bütün Mədaxil və Məxaric Tarixçəsi")
+    st.subheader("📜 Bütün Mədaxil, Məxaric və Gün Sonu Tarixçəsi")
     if not st.session_state.tarixce.empty:
         df_tarixce = st.session_state.tarixce.copy()
         df_tarixce = df_tarixce.iloc[::-1].reset_index(drop=True)
