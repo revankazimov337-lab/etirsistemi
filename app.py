@@ -31,13 +31,17 @@ elif secim == "Yeni Ətir / Stok Əlavə Et":
     
     ad = st.text_input("Ətrin Adı / Növü (Məs: Lacoste)")
     hecm = st.text_input("Həcm (Məs: 90ml)")
-    alish = st.number_input("1 ədədin Alış Qiyməti (AZN)", min_value=0.0)
-    satish = st.number_input("1 ədədin Satış Qiyməti (AZN)", min_value=0.0)
-    stok = st.number_input("Əlavə olunan Miqdar", min_value=0, step=1)
+    
+    # Xanaların avtomatik 0,00 ilə başlamaması üçün value=None etdik
+    alish = st.number_input("1 ədədin Alış Qiyməti (AZN)", min_value=0.0, value=None, placeholder="Məs: 40")
+    satish = st.number_input("1 ədədin Satış Qiyməti (AZN)", min_value=0.0, value=None, placeholder="Məs: 80")
+    stok = st.number_input("Əlavə olunan Miqdar", min_value=0, step=1, value=None, placeholder="Məs: 10")
     
     if st.button("Yoxla və Təsdiqə Keç"):
-        if ad == "":
+        if not ad:
             st.error("Ətrin adını yazın!")
+        elif alish is None or satish is None or stok is None:
+            st.error("Qiymətləri və miqdarı tam daxil edin!")
         else:
             st.session_state.tesdiq_gozleyir = True
             st.session_state.yeni_etir_melumatlari = {"ad": ad, "hecm": hecm, "alish": alish, "satish": satish, "stok": stok}
@@ -84,14 +88,19 @@ elif secim == "Satış Et":
     st.subheader("🛒 Məhsul Satışı")
     if not st.session_state.anbar.empty:
         satilacaq_etir = st.selectbox("Satılan Ətiri Seçin", st.session_state.anbar["Ətrin Adı"])
-        satilan_miqdar = st.number_input("Neçə ədəd satıldı?", min_value=1, step=1)
+        
+        # Bura da boş başlayacaq
+        satilan_miqdar = st.number_input("Neçə ədəd satıldı?", min_value=1, step=1, value=None, placeholder="Məs: 1")
         
         if st.button("Satışı Təsdiqlə"):
-            movcud_stok = st.session_state.anbar.loc[st.session_state.anbar["Ətrin Adı"] == satilacaq_etir, "Stok"].values[0]
-            if movcud_stok >= satilan_miqdar:
-                st.session_state.anbar.loc[st.session_state.anbar["Ətrin Adı"] == satilacaq_etir, "Stok"] -= satilan_miqdar
-                st.success(f"✅ Satış qeydə alındı! {satilacaq_etir} ətrindən {satilan_miqdar} ədəd silindi.")
+            if satilan_miqdar is None:
+                st.error("Zəhmət olmasa satılan miqdarı yazın!")
             else:
-                st.error(f"⚠️ Anbarda cəmi {movcud_stok} ədəd {satilacaq_etir} qalıb.")
+                movcud_stok = st.session_state.anbar.loc[st.session_state.anbar["Ətrin Adı"] == satilacaq_etir, "Stok"].values[0]
+                if movcud_stok >= satilan_miqdar:
+                    st.session_state.anbar.loc[st.session_state.anbar["Ətrin Adı"] == satilacaq_etir, "Stok"] -= satilan_miqdar
+                    st.success(f"✅ Satış qeydə alındı! {satilacaq_etir} ətrindən {satilan_miqdar} ədəd silindi.")
+                else:
+                    st.error(f"⚠️ Anbarda cəmi {movcud_stok} ədəd {satilacaq_etir} qalıb.")
     else:
         st.warning("Əvvəlcə anbara məhsul əlavə edin.")
